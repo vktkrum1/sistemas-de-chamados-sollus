@@ -1,4 +1,4 @@
-from flask import render_template, redirect, url_for, flash, request, current_app
+from flask import render_template, redirect, url_for, flash, request, current_app, session
 from flask_login import login_user, logout_user, current_user
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -36,6 +36,7 @@ def login():
 @auth_bp.route('/logout')
 def logout():
     if current_user.is_authenticated:
+        session.pop('_flashes', None)
         logout_user()
         flash('Sessão encerrada.', 'info')
     return redirect(url_for('auth.login'))

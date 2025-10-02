@@ -60,12 +60,43 @@
 /* Botão flutuante: Sair do modo TV (visível só no modo TV) */
 .tv-exit{ display:none; }
 html[data-tv="1"] .tv-exit{
+  --tv-exit-size: 44px;
   display:inline-flex !important;
   position:fixed;
   top: calc(var(--nav-h, 60px) + 12px);
   right: 16px;
   z-index: 1100;
-  box-shadow: 0 6px 18px rgba(0,0,0,.25);
+  align-items:center;
+  justify-content:center;
+  width:var(--tv-exit-size);
+  height:var(--tv-exit-size);
+  padding:0;
+  border-radius: 999px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.2);
+  overflow:hidden;
+  transition: width .2s ease, padding .2s ease, box-shadow .2s ease, border-radius .2s ease;
+}
+html[data-tv="1"] .tv-exit i{ flex-shrink:0; }
+html[data-tv="1"] .tv-exit .tv-exit-label{
+  opacity:0;
+  max-width:0;
+  overflow:hidden;
+  white-space:nowrap;
+  margin-left:0;
+  transition: opacity .15s ease, max-width .2s ease, margin-left .2s ease;
+}
+html[data-tv="1"] .tv-exit:hover,
+html[data-tv="1"] .tv-exit:focus-visible{
+  width:auto;
+  padding:.45rem .85rem;
+  border-radius:999px;
+  box-shadow:0 8px 20px rgba(0,0,0,.25);
+}
+html[data-tv="1"] .tv-exit:hover .tv-exit-label,
+html[data-tv="1"] .tv-exit:focus-visible .tv-exit-label{
+  opacity:1;
+  max-width:160px;
+  margin-left:.4rem;
 }
 
 /* Modo TV – esconde chrome e aumenta tipografia */
@@ -110,7 +141,8 @@ html[data-tv="1"] .tv-toolbar{ display:none; } /* oculta controles no telão */
 
 <!-- Botão flutuante: Sair do modo TV -->
 <button id="tvExit" type="button" class="btn btn-warning btn-sm tv-exit d-none">
-  <i class="bi bi-x-circle"></i> Sair do modo TV
+  <i class="bi bi-x-circle"></i>
+  <span class="tv-exit-label">Sair do modo TV</span>
 </button>
 
 <div class="dashboard-wrap d-flex flex-column">
