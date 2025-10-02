@@ -1,0 +1,738 @@
+<!-- templates/kanban/board.html -->
+{% extends "layout.html" %}
+{% block title %}Kanban · Sollus{% endblock %}
+
+{% block head %}
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<style>
+/* ---------- Kanban básico ---------- */
+.kanban-wrap{ display:grid; grid-template-columns:repeat(3, 1fr); gap:1rem; }
+.kanban-col{ background:var(--card); border:1px solid rgba(16,24,40,.08); border-radius:12px; display:flex; flex-direction:column; min-height:60vh; }
+.kanban-col header{ padding:.75rem 1rem; border-bottom:1px solid rgba(16,24,40,.08); font-weight:800; text-transform:uppercase; color:var(--muted) }
+.kanban-col .list{ padding:.75rem; display:flex; flex-direction:column; gap:.5rem; }
+.task-card{ background:var(--bg); border:1px solid rgba(16,24,40,.12); border-left-width:6px; border-radius:12px; padding:.5rem .75rem; cursor:grab; }
+.task-card[data-status="todo"]{ border-left-color:#94a3b8 }
+.task-card[data-status="doing"]{ border-left-color:#0F7BC8 }
+.task-card[data-status="done"]{ border-left-color:#16a34a }
+.task-title{ font-weight:700; }
+.task-meta{ font-size:.85rem; color:var(--muted) }
+.dropzone{ min-height: 40vh; border:2px dashed transparent; border-radius:10px; transition: .15s ease }
+.dropzone.dragover{ border-color: rgba(15,123,200,.35); background: rgba(15,123,200,.06) }
+.quick-form .form-control, .quick-form .form-select{ height: 38px; }
+
+/* ---------- Flow Studio ---------- */
+.flow-studio{
+  --flow-bg: #0b1020; --flow-fg: #eef2ff; --flow-panel: rgba(15,20,40,.6);
+  --flow-border: rgba(199,210,254,.25); --flow-accent: #7c3aed; --flow-muted: #c7d2fe;
+  --flow-node-bg: #11182e; --flow-node-border: rgba(199,210,254,.18);
+  --flow-edge-stroke: #64748b; --flow-edge-arrow: #64748b;
+  position:fixed; inset:0; background:var(--flow-bg); color:var(--flow-fg); z-index:1050; display:none;
+}
+.flow-studio.light{
+  --flow-bg: #f7f9fc; --flow-fg: #0b1020; --flow-panel: rgba(255,255,255,.92);
+  --flow-border: rgba(0,0,0,.12); --flow-accent: #6d28d9; --flow-muted: #334155;
+  --flow-node-bg: #ffffff; --flow-node-border: rgba(0,0,0,.12);
+  --flow-edge-stroke: #6b7280; --flow-edge-arrow: #6b7280;
+}
+.flow-studio.open{ display:block; }
+
+/* topbar/botoes */
+.flow-topbar{
+  position:absolute; left:50%; transform:translateX(-50%); top:8px; padding:6px 10px; border-radius:10px;
+  background:var(--flow-panel); border:1px solid var(--flow-border); backdrop-filter: blur(6px);
+  font-weight:700; box-shadow:0 6px 22px rgba(0,0,0,.18); z-index:3;
+}
+.flow-save{
+  position:absolute; right:18px; top:14px; background:var(--flow-accent); color:#fff; border:none;
+  border-radius:10px; padding:.55rem 1rem; font-weight:800; box-shadow:0 10px 24px rgba(0,0,0,.25);
+  z-index:3; cursor:pointer;
+}
+.flow-close{
+  position:absolute; left:18px; top:14px; background:var(--flow-panel); color:var(--flow-fg);
+  border:1px solid var(--flow-border); border-radius:10px; padding:.45rem .8rem; font-weight:700; z-index:3; cursor:pointer;
+}
+
+/* canvas layers */
+.flow-canvas-wrap{ position:absolute; inset:0; overflow:hidden; z-index:1; }
+.flow-grid{
+  position:absolute; inset:0; background:
+    radial-gradient(circle at 1px 1px, rgba(255,255,255,.06) 1px, transparent 1.2px) 0 0/24px 24px,
+    radial-gradient(circle at 1px 1px, rgba(255,255,255,.03) 1px, transparent 1.2px) 0 0/120px 120px;
+}
+.flow-studio.light .flow-grid{
+  background:
+    radial-gradient(circle at 1px 1px, rgba(0,0,0,.08) 1px, transparent 1.2px) 0 0/24px 24px,
+    radial-gradient(circle at 1px 1px, rgba(0,0,0,.04) 1px, transparent 1.2px) 0 0/120px 120px;
+}
+
+/* edges */
+.flow-edges{ position:absolute; inset:0; pointer-events:none; z-index:2; overflow:visible; }
+.flow-edges path{ stroke:var(--flow-edge-stroke); stroke-width:3; fill:none; opacity:.95; vector-effect: non-scaling-stroke; }
+
+/* node */
+.node{
+  position:absolute; width:280px; min-height:92px; border-radius:12px;
+  background:var(--flow-node-bg); border:1px solid var(--flow-node-border);
+  box-shadow:0 10px 22px rgba(0,0,0,.15); color:var(--flow-fg); user-select:none;
+}
+.flow-studio.light .node{ color:#0f172a; }
+.node header{ padding:.5rem .6rem; font-weight:800; display:flex; align-items:center; gap:.5rem; }
+.node header .title{ display:inline-block; max-width:160px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.node header .title[contenteditable="true"]{ outline:2px dashed transparent; }
+.node header .title[contenteditable="true"]:focus{ outline:2px dashed var(--flow-accent); background:rgba(124,58,237,.08) }
+.node .body{ padding:.25rem .75rem .45rem; font-size:.95rem; white-space:pre-wrap; min-height:38px; }
+.node .body[contenteditable="true"]{ outline:2px dashed transparent; transition:.15s }
+.node .body[contenteditable="true"]:focus{ outline:2px dashed var(--flow-accent); background:rgba(124,58,237,.08) }
+.node footer{ padding:0 .75rem .55rem; font-size:.78rem; opacity:.8; }
+
+/* ports */
+.node .ports{ position:absolute; inset: -8px; pointer-events:none; }
+.port{
+  position:absolute; width:12px; height:12px; border-radius:50%; background:var(--flow-accent); border:2px solid var(--flow-bg); pointer-events:auto; cursor:crosshair;
+}
+.port.out{ right:-8px; top:50%; transform:translateY(-50%); }
+.port.in{ left:-8px; top:50%; transform:translateY(-50%); background:#22d3ee; }
+.port.selected{ box-shadow:0 0 0 3px rgba(124,58,237,.35); }
+
+.node.dragging{ opacity:.85; outline:2px dashed color-mix(in oklab, var(--flow-accent) 60%, transparent); }
+
+/* toolbox/zoom/fab/minimap */
+.toolbox{ position:absolute; left:18px; top:64px; display:flex; gap:.4rem; z-index:3; }
+.toolbox .btn{ border-radius:8px; border:1px solid var(--flow-border); background:var(--flow-panel); color:var(--flow-fg); padding:.35rem .6rem; cursor:pointer; }
+.btn.active{ outline:2px solid var(--flow-accent); }
+.zoomctl{ position:absolute; left:18px; bottom:86px; display:flex; flex-direction:column; gap:.35rem; z-index:3; }
+.zoomctl .btn{ width:38px; height:38px; border-radius:12px; background:var(--flow-panel); color:var(--flow-fg); border:1px solid var(--flow-border); cursor:pointer; }
+.fab{ position:absolute; left:18px; bottom:24px; width:46px; height:46px; border-radius:50%;
+  background:#1d4ed8; color:#fff; display:grid; place-items:center; font-size:22px; cursor:pointer;
+  box-shadow:0 12px 26px rgba(29,78,216,.35); z-index:3; }
+.minimap{
+  position:absolute; right:18px; bottom:18px; width:220px; height:140px; background:var(--flow-panel); border:1px solid var(--flow-border);
+  border-radius:12px; overflow:hidden; box-shadow:0 10px 22px rgba(0,0,0,.15); display:grid; place-items:center; z-index:3; }
+.minimap svg{ width:100%; height:100%; }
+.minimap rect{ fill:#33415533; stroke:#94a3b8; stroke-width:.4; }
+
+.k-pill{ font-size:.7rem; background:rgba(255,255,255,.08); padding:.1rem .4rem; border-radius:999px; border:1px solid rgba(255,255,255,.12) }
+.flow-studio.light .k-pill{ background:rgba(0,0,0,.06); border-color:rgba(0,0,0,.08); color:#0f172a; }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set role = (current_user.role or '') %}
+{% if not (current_user.is_authenticated and role in ['admin','gestor','agent']) %}
+  <div class="alert alert-warning">Acesso restrito.</div>
+{% endif %}
+
+<div class="d-flex align-items-end gap-2 mb-3 quick-form">
+  <div class="flex-grow-1">
+    <label class="form-label mb-1">Título</label>
+    <input class="form-control" name="q_title" placeholder="Ex.: Atualizar servidor de arquivos">
+  </div>
+  <div style="width:200px">
+    <label class="form-label mb-1">Vencimento</label>
+    <input type="date" class="form-control" name="q_due">
+  </div>
+  <div style="width:260px">
+    <label class="form-label mb-1">Responsável</label>
+    <select class="form-select" name="q_assignee">
+      <option value="">— Ninguém —</option>
+      {% for u in agents %}
+        <option value="{{ u.id }}">{{ u.name or u.email }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <button id="btnQuickAdd" class="btn btn-primary">
+    <i class="bi bi-plus-lg"></i> Adicionar em “A Fazer”
+  </button>
+</div>
+
+<div class="kanban-wrap">
+  <section class="kanban-col" data-col="todo">
+    <header><i class="bi bi-list-task me-1"></i> A Fazer</header>
+    <div class="list dropzone" id="col-todo"></div>
+  </section>
+  <section class="kanban-col" data-col="doing">
+    <header><i class="bi bi-gear-wide-connected me-1"></i> Fazendo</header>
+    <div class="list dropzone" id="col-doing"></div>
+  </section>
+  <section class="kanban-col" data-col="done">
+    <header><i class="bi bi-check2-circle me-1"></i> Concluído</header>
+    <div class="list dropzone" id="col-done"></div>
+  </section>
+</div>
+
+<!-- Flow Studio fullscreen -->
+<div id="flowStudio" class="flow-studio" aria-hidden="true">
+  <button class="flow-close" id="flowClose">&larr; Voltar</button>
+  <div class="flow-topbar">
+    <span id="flowTitle">Fluxo</span>
+    <span class="k-pill ms-2" id="flowSubtaskName"></span>
+  </div>
+  <button class="flow-save" id="flowSave">SALVAR</button>
+
+  <div class="toolbox">
+    <button class="btn" id="btnConnect" title="Dica visual (conexões por clique)"><i class="bi bi-node-plus"></i> Ligar</button>
+    <button class="btn" id="btnSnap" title="Encaixar e criar ligações em sequência"><i class="bi bi-magic"></i> Auto</button>
+  </div>
+
+  <div class="flow-canvas-wrap" id="canvasWrap">
+    <div class="flow-grid"></div>
+    <svg class="flow-edges" id="edgesSvg"></svg>
+    <div class="flow-canvas" id="flowCanvas"></div>
+  </div>
+
+  <div class="zoomctl">
+    <button class="btn" id="zoomIn">+</button>
+    <button class="btn" id="zoomOut">−</button>
+    <button class="btn" id="zoomFit">⤢</button>
+  </div>
+
+  <div class="fab" id="fabPlus" title="Novo bloco">+</div>
+
+  <div class="minimap" id="minimap">
+    <svg id="miniSvg"></svg>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  window.__showJSerr = function(e){
+    console.error('[Kanban/Flow JS]', e);
+    try{
+      if(!window.__jsErrShown){
+        window.__jsErrShown = true;
+        var msg = (e && e.message) ? e.message : String(e);
+        alert('Erro de script no Kanban/Fluxo:\\n' + msg + '\\nVeja o console para detalhes.');
+      }
+    }catch(_){}
+  };
+
+  try{
+    const csrf = (document.querySelector('meta[name="csrf-token"]')||{}).getAttribute ? document.querySelector('meta[name="csrf-token"]').getAttribute('content') : '';
+
+    /* URLs */
+    const API_LIST   = "{{ url_for('kanban.api_list_tasks') }}";
+    const API_CREATE = "{{ url_for('kanban.api_create_task') }}";
+    const API_UPDATE = id => "{{ url_for('kanban.api_update_task', task_id=0) }}".replace('/0','/'+id);
+    const API_MOVE   = id => "{{ url_for('kanban.api_move_task', task_id=0) }}".replace('/0','/'+id);
+    const API_DELETE = id => "{{ url_for('kanban.api_delete_task', task_id=0) }}".replace('/0','/'+id);
+
+    const API_SUB_LIST   = tid => "{{ url_for('kanban.api_list_subtasks',   task_id=0) }}".replace('/0','/'+tid);
+    const API_SUB_CREATE = tid => "{{ url_for('kanban.api_create_subtask', task_id=0) }}".replace('/0','/'+tid);
+    const API_SUB_DELETE = sid => "{{ url_for('kanban.api_delete_subtask', subtask_id=0) }}".replace('/0','/'+sid);
+
+    const API_FLOW_NODES = sid => "{{ url_for('kanban.api_flow_nodes_list', subtask_id=0) }}".replace('/0','/'+sid); // GET/POST
+    const API_FLOW_EDGES = sid => "{{ url_for('kanban.api_flow_edges_list', subtask_id=0) }}".replace('/0','/'+sid); // GET/POST
+    const API_NODE_UPD   = nid => "{{ url_for('kanban.api_flow_nodes_update', node_id=0) }}".replace('/0','/'+nid);   // PUT
+    const API_NODE_DEL   = nid => "{{ url_for('kanban.api_flow_nodes_delete', node_id=0) }}".replace('/0','/'+nid);   // DELETE
+    const API_EDGE_DEL   = eid => "{{ url_for('kanban.api_flow_edges_delete', edge_id=0) }}".replace('/0','/'+eid);   // DELETE
+
+    const colEls = { todo:document.getElementById('col-todo'), doing:document.getElementById('col-doing'), done:document.getElementById('col-done') };
+
+    /* ===== Kanban ===== */
+    function taskCard(t){
+      const el = document.createElement('div');
+      el.className = 'task-card';
+      el.draggable = true;
+      el.dataset.id = t.id; el.dataset.status = t.status;
+
+      el.innerHTML =
+        `<div class="d-flex justify-content-between align-items-start">
+          <div class="task-title text-truncate me-2" title="${t.title||''}">${t.title||''}</div>
+          <div class="btn-group btn-group-sm">
+            <button class="btn btn-outline-secondary btn-flow" title="Abrir Fluxo"><i class="bi bi-diagram-3"></i></button>
+            <button class="btn btn-outline-secondary btn-edit" title="Editar"><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-outline-danger btn-del" title="Excluir"><i class="bi bi-trash"></i></button>
+          </div>
+        </div>
+        <div class="task-meta mt-1">
+          ${t.assignee_name ? ('👤 '+t.assignee_name+' · ') : ''}${t.due_date ? ('📅 '+t.due_date) : ''}
+        </div>`;
+
+      el.addEventListener('dragstart', ev=>{
+        ev.dataTransfer.setData('text/plain', String(t.id));
+        setTimeout(()=> el.classList.add('dragging'), 0);
+      });
+      el.addEventListener('dragend', ()=> el.classList.remove('dragging'));
+
+      el.querySelector('.btn-edit').addEventListener('click', async ()=>{
+        const newTitle = prompt('Título:', t.title||'');
+        if (newTitle === null) return;
+        const res = await fetch(API_UPDATE(t.id), { method:'PUT', headers:{'Content-Type':'application/json','X-CSRFToken':csrf}, body: JSON.stringify({title:newTitle}) });
+        if (res.ok){ t.title = newTitle; el.querySelector('.task-title').textContent = newTitle; }
+        else alert('Falha ao editar.');
+      });
+
+      el.querySelector('.btn-del').addEventListener('click', async ()=>{
+        if (!confirm('Excluir esta tarefa?')) return;
+        const res = await fetch(API_DELETE(t.id), { method:'DELETE', headers:{'X-CSRFToken': csrf} });
+        if (res.ok){ el.remove(); reorder(el.parentElement); }
+        else {
+          let txt = ''; try{ txt = await res.text(); }catch(_){}
+          alert('Falha ao excluir.\n'+txt);
+        }
+      });
+
+      el.querySelector('.btn-flow').addEventListener('click', ()=> openFlowStudio(t));
+      return el;
+    }
+
+    function renderBoard(data){
+      ['todo','doing','done'].forEach(k=>{
+        const list = colEls[k]; list.innerHTML='';
+        (data[k]||[]).forEach(t=> list.appendChild(taskCard(t)));
+      });
+      attachDnD();
+    }
+
+    function attachDnD(){
+      document.querySelectorAll('.dropzone').forEach(zone=>{
+        zone.addEventListener('dragover', ev=>{
+          ev.preventDefault(); zone.classList.add('dragover');
+          const after = getAfter(zone, ev.clientY);
+          const dragging = document.querySelector('.dragging');
+          if (!dragging) return;
+          if (!after) zone.appendChild(dragging); else zone.insertBefore(dragging, after);
+        });
+        zone.addEventListener('dragleave', ()=> zone.classList.remove('dragover'));
+        zone.addEventListener('drop', async ev=>{
+          ev.preventDefault(); zone.classList.remove('dragover');
+          const id = +ev.dataTransfer.getData('text/plain') || 0; if (!id) return;
+          const items = [...zone.querySelectorAll('.task-card')];
+          const newPos = items.findIndex(i => +i.dataset.id === id) + 1;
+          const newStatus = zone.parentElement.getAttribute('data-col');
+          const res = await fetch(API_MOVE(id), { method:'PUT', headers:{'Content-Type':'application/json','X-CSRFToken':csrf}, body: JSON.stringify({status:newStatus, position:newPos}) });
+          if (!res.ok) alert('Falha ao mover.');
+          reorder(zone);
+        });
+      });
+    }
+    function reorder(zone){
+      [...zone.querySelectorAll('.task-card')].forEach((el,i)=>{
+        el.dataset.position = i+1;
+        el.dataset.status = zone.parentElement.getAttribute('data-col');
+      });
+    }
+    function getAfter(container,y){
+      const els = [...container.querySelectorAll('.task-card:not(.dragging)')];
+      return els.reduce((closest,child)=>{
+        const box = child.getBoundingClientRect(); const offset = y - box.top - box.height/2;
+        if (offset < 0 && offset > closest.offset) return {offset, element:child};
+        else return closest;
+      }, {offset:-Infinity}).element;
+    }
+
+    document.getElementById('btnQuickAdd')?.addEventListener('click', async ()=>{
+      const t = document.querySelector('[name="q_title"]')?.value?.trim() || '';
+      const dd = document.querySelector('[name="q_due"]')?.value?.trim() || '';
+      const asg = document.querySelector('[name="q_assignee"]')?.value?.trim() || '';
+      if (!t){ alert('Informe um título'); return; }
+      const payload = { title:t, description:null, due_date:dd||null, assignee_id: asg?parseInt(asg,10):null, status:'todo' };
+      const res = await fetch(API_CREATE, { method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':csrf}, body: JSON.stringify(payload) });
+      if (!res.ok){ alert('Falha ao criar'); return; }
+      await loadBoard();
+      document.querySelector('[name="q_title"]').value='';
+      document.querySelector('[name="q_due"]').value='';
+      document.querySelector('[name="q_assignee"]').value='';
+    });
+
+    async function loadBoard(){
+      const res = await fetch(API_LIST, {headers:{'X-Requested-With':'fetch'}});
+      if (!res.ok){ alert('Falha ao carregar Kanban'); return; }
+      renderBoard(await res.json() || {todo:[],doing:[],done:[]});
+    }
+    loadBoard();
+
+    /* ===== Flow ===== */
+    const studio = document.getElementById('flowStudio');
+    const flowCanvas = document.getElementById('flowCanvas');
+    const edgesSvg   = document.getElementById('edgesSvg');
+    const flowTitle  = document.getElementById('flowTitle');
+    const flowSubtaskName = document.getElementById('flowSubtaskName');
+
+    const state = {
+      open:false, task:null, subtask:null,
+      nodes:[], edges:[], nodesMap:new Map(),
+      scale:1, offsetX:200, offsetY:140,
+      dirty:false
+    };
+
+    // Conexão por clique
+    let connectFromId = null;
+    let connectFromEl = null;
+    const edgeExists = (a,b)=> state.edges.some(e=> e.from_id===a && e.to_id===b);
+
+    // Tema
+    function isLightTheme(){
+      const a = (document.documentElement.getAttribute('data-bs-theme')||document.body.getAttribute('data-bs-theme')||'').toLowerCase();
+      if (a) return a==='light';
+      const b = (document.documentElement.getAttribute('data-theme')||document.body.getAttribute('data-theme')||'').toLowerCase();
+      if (b) return b==='light';
+      const cls = (document.documentElement.className+' '+document.body.className).toLowerCase();
+      if (/\blight\b/.test(cls) && !/\bdark\b/.test(cls)) return true;
+      try{
+        const bg = getComputedStyle(document.body).backgroundColor;
+        const m = bg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+        if (m){ const r=+m[1], g=+m[2], b=+m[3]; const L=(0.2126*r+0.7152*g+0.0722*b)/255; return L>0.6; }
+      }catch(_){}
+      return window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+    }
+    function syncTheme(){ studio.classList.toggle('light', isLightTheme()); }
+    const mo1 = new MutationObserver(syncTheme);
+    mo1.observe(document.documentElement, { attributes:true });
+    mo1.observe(document.body, { attributes:true });
+    setInterval(syncTheme, 1200);
+
+    // Datas (ISO sem TZ -> UTC, exibe local)
+    const parseIsoAssumingUTC = s => !s ? null : new Date(/[zZ]|[+\-]\d{2}:?\d{2}$/.test(s) ? s : s+'Z');
+    function fmtDate(dtIso){
+      const d = parseIsoAssumingUTC(dtIso);
+      if (!d || isNaN(d.getTime())) return dtIso || '–';
+      const p = n => (n<10?'0':'')+n;
+      return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+    }
+
+    function toCanvasXY(clientX, clientY){
+      const rect = flowCanvas.getBoundingClientRect();
+      return { x:(clientX-rect.left-state.offsetX)/state.scale, y:(clientY-rect.top-state.offsetY)/state.scale };
+    }
+    function applyTransform(){
+      flowCanvas.style.transform = `translate(${state.offsetX}px, ${state.offsetY}px) scale(${state.scale})`;
+      edgesSvg.style.transform   = `translate(${state.offsetX}px, ${state.offsetY}px) scale(${state.scale})`;
+      edgesSvg.style.transformOrigin = '0 0';
+      requestAnimationFrame(()=>{ drawEdges(); drawMinimap(); }); // desenha após o layout aplicar a transform
+    }
+
+    async function openFlowStudio(task){
+      syncTheme();
+      const listRes = await fetch(API_SUB_LIST(task.id));
+      let subs = listRes.ok ? await listRes.json() : [];
+      if (!Array.isArray(subs)) subs = [];
+      let sub = subs[0];
+      if (!sub){
+        const cr = await fetch(API_SUB_CREATE(task.id), { method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':csrf}, body: JSON.stringify({title:'Fluxo', status:'open'}) });
+        sub = cr.ok ? await cr.json() : null;
+      }
+      if (!sub){ alert('Não foi possível abrir o fluxo'); return; }
+
+      state.task = task; state.subtask = sub; state.open = true; studio.classList.add('open');
+      flowTitle.textContent = task.title; flowSubtaskName.textContent = sub.title;
+      await loadFlow(sub.id);
+      requestAnimationFrame(applyTransform);
+    }
+    function closeFlowStudio(){
+      studio.classList.remove('open'); state.open=false;
+      if (connectFromEl){ connectFromEl.classList.remove('selected'); }
+      connectFromId = null; connectFromEl = null;
+    }
+    document.getElementById('flowClose').addEventListener('click', closeFlowStudio);
+    window.addEventListener('keydown', ev=>{ if (ev.key === 'Escape' && state.open) closeFlowStudio(); });
+
+    async function loadFlow(subtaskId){
+      const nr = await fetch(API_FLOW_NODES(subtaskId));
+      state.nodes = nr.ok ? await nr.json() : [];
+      state.nodesMap = new Map(state.nodes.map(n=> [n.id,n]));
+      const er = await fetch(API_FLOW_EDGES(subtaskId));
+      state.edges = er.ok ? await er.json() : [];
+      flowCanvas.innerHTML = '';
+      state.nodes.forEach(n=> flowCanvas.appendChild(nodeEl(n)));
+      drawEdges(); drawMinimap(); state.dirty=false;
+    }
+
+    const safe = txt => String(txt||'').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+    function nodeEl(n){
+      const el = document.createElement('div');
+      el.className = 'node'; el.dataset.id = n.id;
+      el.style.left = (n.x||0)+'px'; el.style.top = (n.y||0)+'px';
+
+      const created = n.created_at ? fmtDate(n.created_at) : '–';
+      el.innerHTML = `
+        <header>
+          <div class="title" contenteditable="true" title="Duplo-clique para editar título">${safe(n.title)||'Título'}</div>
+          <div class="ms-auto d-flex gap-1">
+            <button class="btn btn-sm btn-light"  data-act="rename" title="Editar título"><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-sm btn-danger" data-act="del"    title="Excluir bloco"><i class="bi bi-x-lg"></i></button>
+          </div>
+        </header>
+        <div class="body" contenteditable="true" title="Escreva a descrição aqui...">${safe(n.body)||''}</div>
+        <footer><span class="text-muted">Criado em:</span> <span class="created-at">${created}</span></footer>
+        <div class="ports">
+          <div class="port in"   data-port="in"></div>
+          <div class="port out"  data-port="out"></div>
+        </div>`;
+
+      // título
+      const titleEl = el.querySelector('.title'); let tSaveTimer=null;
+      const persistTitleNow = ()=>{
+        const txt = titleEl.innerText.trim();
+        fetch(API_NODE_UPD(n.id), { method:'PUT', headers:{'Content-Type':'application/json','X-CSRFToken':csrf}, body: JSON.stringify({title: txt}) })
+          .then(()=>{ n.title = txt; state.dirty=true; }).catch(()=>{});
+      };
+      const scheduleTitleSave = ()=>{ clearTimeout(tSaveTimer); tSaveTimer=setTimeout(persistTitleNow, 500); };
+      titleEl.addEventListener('input', scheduleTitleSave);
+      el.querySelector('[data-act="rename"]').addEventListener('click', ()=>{
+        const t = prompt('Título do bloco:', n.title||'') || '';
+        titleEl.innerText = t; persistTitleNow();
+      });
+
+      // descrição
+      const bodyEl = el.querySelector('.body'); let bSaveTimer=null;
+      const persistBodyNow = ()=>{
+        const txt = bodyEl.innerText;
+        fetch(API_NODE_UPD(n.id), { method:'PUT', headers:{'Content-Type':'application/json','X-CSRFToken':csrf}, body: JSON.stringify({body: txt}) })
+          .then(()=>{ n.body = txt; state.dirty=true; }).catch(()=>{});
+      };
+      const scheduleBodySave = ()=>{ clearTimeout(bSaveTimer); bSaveTimer=setTimeout(persistBodyNow, 600); };
+      bodyEl.addEventListener('input', scheduleBodySave);
+
+      // mover
+      let dragging=false, sx=0, sy=0, ox=0, oy=0;
+      el.addEventListener('mousedown', ev=>{
+        if (ev.target.closest('button') || ev.target.closest('.body') || ev.target.closest('.title')) return;
+        if (ev.button!==0) return;
+        dragging=true; el.classList.add('dragging');
+        sx=ev.clientX; sy=ev.clientY; ox=n.x||0; oy=n.y||0; ev.preventDefault();
+      });
+      window.addEventListener('mousemove', ev=>{
+        if (!dragging) return;
+        const dx=(ev.clientX-sx)/state.scale, dy=(ev.clientY-sy)/state.scale;
+        n.x=Math.round(ox+dx); n.y=Math.round(oy+dy);
+        el.style.left=n.x+'px'; el.style.top=n.y+'px';
+        drawEdges(); state.dirty=true;
+      });
+      window.addEventListener('mouseup', async ()=>{
+        if (!dragging) return; dragging=false; el.classList.remove('dragging');
+        await fetch(API_NODE_UPD(n.id), { method:'PUT', headers:{'Content-Type':'application/json','X-CSRFToken':csrf}, body: JSON.stringify({x:n.x,y:n.y}) });
+      });
+
+      // excluir
+      el.querySelector('[data-act="del"]').addEventListener('click', async ()=>{
+        if (!confirm('Excluir bloco e conexões?')) return;
+        const r = await fetch(API_NODE_DEL(n.id), { method:'DELETE', headers:{'X-CSRFToken':csrf} });
+        if (r.ok){
+          flowCanvas.removeChild(el);
+          state.nodes = state.nodes.filter(x=> x.id!==n.id);
+          state.nodesMap.delete(n.id);
+          state.edges = state.edges.filter(e=> e.from_id!==n.id && e.to_id!==n.id);
+          drawEdges(); drawMinimap(); state.dirty=true;
+        } else alert('Falha ao excluir o bloco.');
+      });
+
+      // conexão por clique
+      el.querySelector('.port.out').addEventListener('click', ev=>{
+        ev.stopPropagation(); ev.preventDefault();
+        if (connectFromEl && connectFromEl !== ev.currentTarget) connectFromEl.classList.remove('selected');
+        if (connectFromId === n.id){ connectFromId=null; connectFromEl=null; ev.currentTarget.classList.remove('selected'); return; }
+        connectFromId=n.id; connectFromEl=ev.currentTarget; ev.currentTarget.classList.add('selected'); syncConnectHint();
+      });
+      el.querySelector('.port.in').addEventListener('click', async ev=>{
+        ev.stopPropagation(); ev.preventDefault();
+        if (!connectFromId || connectFromId === n.id){
+          if (connectFromEl) connectFromEl.classList.remove('selected');
+          connectFromId=null; connectFromEl=null; syncConnectHint(); return;
+        }
+        if (edgeExists(connectFromId, n.id)){
+          if (connectFromEl) connectFromEl.classList.remove('selected');
+          connectFromId=null; connectFromEl=null; syncConnectHint(); return;
+        }
+        try{
+          const payload = { from_id: connectFromId, to_id: n.id, subtask_id: state.subtask.id, label: null };
+          const r = await fetch(API_FLOW_EDGES(state.subtask.id), { method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':csrf}, body: JSON.stringify(payload) });
+          if (r.ok){ const e = await r.json(); state.edges.push(e); drawEdges(); state.dirty=true; }
+          else alert('Não foi possível criar a ligação.');
+        } finally {
+          if (connectFromEl) connectFromEl.classList.remove('selected');
+          connectFromId=null; connectFromEl=null; syncConnectHint();
+        }
+      });
+
+      return el;
+    }
+
+    /* ===== ARESTAS: usa matriz do SVG para converter coordenadas de tela (fix do zoom) ===== */
+    function drawEdges(){
+      edgesSvg.innerHTML = '';
+
+      // converte coordenadas client (px de tela) para o sistema local do edgesSvg
+      function clientToSvg(x, y){
+        const pt = edgesSvg.createSVGPoint();
+        pt.x = x; pt.y = y;
+        const inv = edgesSvg.getScreenCTM().inverse();
+        const sp = pt.matrixTransform(inv);
+        return { x: sp.x, y: sp.y };
+      }
+
+      // centro da bolinha (porta) em coordenadas do edgesSvg
+      function portCenter(portEl){
+        if (!portEl) return null;
+        const r = portEl.getBoundingClientRect();
+        return clientToSvg(r.left + r.width/2, r.top + r.height/2);
+      }
+
+      const mkCurve = (x1,y1,x2,y2)=>{
+        const dx = Math.max(60, Math.abs(x2-x1)*0.5);
+        return `M ${x1} ${y1} C ${x1+dx} ${y1}, ${x2-dx} ${y2}, ${x2} ${y2}`;
+      };
+
+      state.edges.forEach(e=>{
+        const fromEl = flowCanvas.querySelector(`.node[data-id="${e.from_id}"] .port.out`);
+        const toEl   = flowCanvas.querySelector(`.node[data-id="${e.to_id}"] .port.in`);
+        if (!fromEl || !toEl) return;
+
+        const a = portCenter(fromEl);
+        const b = portCenter(toEl);
+        if (!a || !b) return;
+
+        const p = document.createElementNS('http://www.w3.org/2000/svg','path');
+        p.setAttribute('d', mkCurve(a.x, a.y, b.x, b.y));
+        p.setAttribute('data-id', e.id);
+
+        p.addEventListener('click', async (ev)=>{
+          if (!ev.shiftKey) return;
+          if (!confirm('Remover ligação?')) return;
+          const rr = await fetch(API_EDGE_DEL(e.id), { method:'DELETE', headers:{'X-CSRFToken':csrf} });
+          if (rr.ok){ state.edges = state.edges.filter(x=> x.id!==e.id); drawEdges(); }
+        });
+
+        edgesSvg.appendChild(p);
+      });
+      // a transform é aplicada em applyTransform; aqui não precisa dividir por scale/offset
+    }
+
+    // zoom/pan
+    const wrap = document.getElementById('canvasWrap');
+    wrap.addEventListener('wheel', ev=>{
+      if (!ev.ctrlKey){
+        state.offsetY -= ev.deltaY*0.3; state.offsetX -= ev.deltaX*0.3; applyTransform();
+        return;
+      }
+      ev.preventDefault();
+      const factor = ev.deltaY < 0 ? 1.08 : 0.92;
+      const rect = flowCanvas.getBoundingClientRect();
+      const cx = (ev.clientX - rect.left - state.offsetX)/state.scale;
+      const cy = (ev.clientY - rect.top  - state.offsetY)/state.scale;
+      state.scale = Math.min(2.2, Math.max(0.35, state.scale * factor));
+      state.offsetX = ev.clientX - rect.left - cx*state.scale;
+      state.offsetY = ev.clientY - rect.top  - cy*state.scale;
+      applyTransform();
+    }, {passive:false});
+
+    let panning=false, psx=0, psy=0, pox=0, poy=0;
+    wrap.addEventListener('mousedown', ev=>{
+      if (!ev.target.closest('.node') && (ev.button===1 || ev.shiftKey || (ev.buttons===1 && ev.target===wrap))){
+        panning=true; psx=ev.clientX; psy=ev.clientY; pox=state.offsetX; poy=state.offsetY; wrap.style.cursor='grabbing';
+      }
+    });
+    window.addEventListener('mousemove', ev=>{
+      if (!panning) return;
+      state.offsetX = pox + (ev.clientX-psx);
+      state.offsetY = poy + (ev.clientY-psy);
+      applyTransform();
+    });
+    window.addEventListener('mouseup', ()=>{ panning=false; wrap.style.cursor='default'; });
+
+    // zoom controls
+    document.getElementById('zoomIn').onclick = ()=>{ state.scale=Math.min(2.2,state.scale*1.12); applyTransform(); };
+    document.getElementById('zoomOut').onclick= ()=>{ state.scale=Math.max(0.35,state.scale*0.88); applyTransform(); };
+    document.getElementById('zoomFit').onclick = ()=>{ fitToContent(); };
+
+    function fitToContent(){
+      if (!state.nodes.length){ state.scale=1; state.offsetX=200; state.offsetY=140; return applyTransform(); }
+      const xs = state.nodes.map(n=> n.x), ys = state.nodes.map(n=> n.y);
+      const minX=Math.min(...xs)-80, minY=Math.min(...ys)-80;
+      const theMaxX=Math.max(...xs)+300, theMaxY=Math.max(...ys)+180;
+      const w = wrap.clientWidth, h = wrap.clientHeight;
+      const scaleX = w/(theMaxX-minX), scaleY = h/(theMaxY-minY);
+      state.scale = Math.min(1.6, Math.max(0.35, Math.min(scaleX, scaleY)));
+      state.offsetX = -minX*state.scale + 40;
+      state.offsetY = -minY*state.scale + 40;
+      applyTransform();
+    }
+
+    // toolbar
+    const btnConnect = document.getElementById('btnConnect');
+    const syncConnectHint = ()=> btnConnect.classList.toggle('active', !!connectFromId);
+    btnConnect.onclick = ()=> btnConnect.classList.toggle('active');
+
+    document.getElementById('btnSnap').onclick = async ()=>{
+      state.nodes.forEach(n=>{
+        n.x = Math.round((n.x||0)/24)*24; n.y = Math.round((n.y||0)/24)*24;
+        const el2 = flowCanvas.querySelector(`.node[data-id="${n.id}"]`);
+        if (el2){ el2.style.left=n.x+'px'; el2.style.top=n.y+'px'; }
+      });
+      drawEdges(); state.dirty=true;
+
+      const ordered = state.nodes.slice().sort((a,b)=> (a.x===b.x) ? (a.y-b.y) : (a.x-b.x));
+      for (let i=0;i<ordered.length-1;i++){
+        const A = ordered[i], B = ordered[i+1];
+        if (!edgeExists(A.id, B.id)){
+          try{
+            const r = await fetch(API_FLOW_EDGES(state.subtask.id), {
+              method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':csrf},
+              body: JSON.stringify({ from_id:A.id, to_id:B.id, subtask_id: state.subtask.id, label:null })
+            });
+            if (r.ok){ const e = await r.json(); state.edges.push(e); }
+          }catch(_){}
+        }
+      }
+      drawEdges();
+    };
+
+    // FAB novo bloco
+    const fab = document.getElementById('fabPlus');
+    fab.onclick = async ()=>{
+      if (!state.subtask) return;
+      const rect = wrap.getBoundingClientRect();
+      const cx = rect.left + rect.width/2, cy = rect.top + rect.height/2;
+      const cxy = toCanvasXY(cx, cy);
+      const payload = { subtask_id: state.subtask.id, title: 'Novo bloco', shape: 'rect', color: '#e5e7eb', x: Math.round(cxy.x), y: Math.round(cxy.y), body: '' };
+      const r = await fetch(API_FLOW_NODES(state.subtask.id), { method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':csrf}, body: JSON.stringify(payload) });
+      const nowIso = (new Date()).toISOString();
+      if (r.ok){
+        const n = await r.json();
+        if (!n.created_at) n.created_at = nowIso;
+        if (typeof n.body === 'undefined') n.body = '';
+        state.nodes.push(n); state.nodesMap.set(n.id,n);
+        const el = nodeEl(n); flowCanvas.appendChild(el);
+        drawMinimap(); state.dirty=true; drawEdges();
+      } else { alert('Falha ao criar bloco do fluxo.'); }
+    };
+
+    // salvar (visual)
+    document.getElementById('flowSave').onclick = ()=>{
+      state.dirty=false;
+      const btn = document.getElementById('flowSave');
+      btn.textContent='SALVO ✓'; setTimeout(()=> btn.textContent='SALVAR', 1200);
+    };
+
+    // minimapa
+    const miniSvg = document.getElementById('miniSvg');
+    function drawMinimap(){
+      miniSvg.innerHTML='';
+      if (!state.nodes.length) return;
+      const xs=state.nodes.map(n=> n.x), ys=state.nodes.map(n=> n.y);
+      const minX=Math.min(...xs)-60, minY=Math.min(...ys)-60;
+      const maxX=Math.max(...xs)+280, maxY=Math.max(...ys)+140;
+      const W = miniSvg.clientWidth||220, H = miniSvg.clientHeight||140;
+      const scale = Math.min(W/(maxX-minX), H/(maxY-minY));
+      state.nodes.forEach(n=>{
+        const r = document.createElementNS('http://www.w3.org/2000/svg','rect');
+        r.setAttribute('x', (n.x-minX)*scale); r.setAttribute('y',(n.y-minY)*scale);
+        r.setAttribute('width', 280*scale); r.setAttribute('height', 100*scale);
+        miniSvg.appendChild(r);
+      });
+      const vx0 = (-state.offsetX/state.scale - minX)*scale;
+      const vy0 = (-state.offsetY/state.scale - minY)*scale;
+      const vw  = (wrap.clientWidth/state.scale)*scale;
+      const vh  = (wrap.clientHeight/state.scale)*scale;
+      const vp = document.createElementNS('http://www.w3.org/2000/svg','rect');
+      vp.setAttribute('x',vx0); vp.setAttribute('y',vy0); vp.setAttribute('width',vw); vp.setAttribute('height',vh); vp.setAttribute('class','viewport');
+      miniSvg.appendChild(vp);
+    }
+
+  } catch(e){ __showJSerr(e); }
+})();
+</script>
+{% endblock %}

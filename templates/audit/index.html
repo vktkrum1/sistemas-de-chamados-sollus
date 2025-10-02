@@ -1,0 +1,92 @@
+{% extends "layout.html" %}
+{% block title %}Auditoria · Sollus{% endblock %}
+
+{% block content %}
+<h1 class="h3 mb-3">Auditoria</h1>
+
+<form class="row g-2 mb-3" method="get">
+  <div class="col-md-3">
+    <label class="form-label mb-1">Entidade</label>
+    <input class="form-control" name="entity_type" value="{{ filters.entity_type }}">
+  </div>
+  <div class="col-md-3">
+    <label class="form-label mb-1">Ação</label>
+    <input class="form-control" name="action" value="{{ filters.action }}">
+  </div>
+  <div class="col-md-3">
+    <label class="form-label mb-1">Autor (id, email, nome)</label>
+    <input class="form-control" name="actor" value="{{ filters.actor }}">
+  </div>
+  <div class="col-md-3">
+    <label class="form-label mb-1">Texto</label>
+    <input class="form-control" name="q" value="{{ filters.q }}">
+  </div>
+  <div class="col-md-2">
+    <label class="form-label mb-1">Por página</label>
+    <input type="number" min="5" max="100" class="form-control" name="per_page" value="{{ filters.per_page }}">
+  </div>
+  <div class="col-md-10 d-flex align-items-end">
+    <button class="btn btn-primary me-2"><i class="bi bi-search"></i> Buscar</button>
+    <a class="btn btn-outline-secondary" href="{{ url_for('audit.page') }}">Limpar</a>
+  </div>
+</form>
+
+<div class="table-responsive">
+<table class="table table-sm align-middle">
+  <thead class="table-light">
+    <tr>
+      <th style="width: 180px;">Quando</th>
+      <th>Autor</th>
+      <th>Entidade</th>
+      <th>Ação</th>
+      <th>Mensagem</th>
+      <th style="width: 260px;">Antes</th>
+      <th style="width: 260px;">Depois</th>
+      <th>IP</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+      <tr>
+        <td class="text-nowrap">{{ r.created_at.strftime('%d/%m/%Y %H:%M') if r.created_at else '—' }}</td>
+        <td>
+          {% if r.actor_name %}<strong>{{ r.actor_name }}</strong>{% endif %}
+          {% if r.actor_email %}<div class="text-muted small">{{ r.actor_email }}</div>{% endif %}
+          {% if r.actor_id %}<div class="text-muted small">id: {{ r.actor_id }}</div>{% endif %}
+        </td>
+        <td class="text-nowrap">{{ r.entity_type }}{% if r.entity_id %} #{{ r.entity_id }}{% endif %}</td>
+        <td class="text-nowrap"><span class="badge bg-secondary">{{ r.action }}</span></td>
+        <td style="max-width: 320px; word-break: break-word;">{{ r.message or '' }}</td>
+        <td><pre class="small mb-0" style="white-space: pre-wrap; word-break: break-word;">{{ r.before|tojson(indent=2) if r.before else '' }}</pre></td>
+        <td><pre class="small mb-0" style="white-space: pre-wrap; word-break: break-word;">{{ r.after|tojson(indent=2)  if r.after  else '' }}</pre></td>
+        <td class="text-nowrap">{{ r.ip or '' }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8" class="text-center text-muted">Nenhum registro.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% if pagination.pages > 1 %}
+<nav>
+  <ul class="pagination">
+    <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+      <a class="page-link" href="{{ url_for('audit.page', page=pagination.prev_num, **filters) }}">«</a>
+    </li>
+    {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+      {% if p %}
+        <li class="page-item {% if p == pagination.page %}active{% endif %}">
+          <a class="page-link" href="{{ url_for('audit.page', page=p, **filters) }}">{{ p }}</a>
+        </li>
+      {% else %}
+        <li class="page-item disabled"><span class="page-link">…</span></li>
+      {% endif %}
+    {% endfor %}
+    <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+      <a class="page-link" href="{{ url_for('audit.page', page=pagination.next_num, **filters) }}">»</a>
+    </li>
+  </ul>
+</nav>
+{% endif %}
+{% endblock %}
