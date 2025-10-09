@@ -1,0 +1,5 @@
+INICIAR MARIADB:
+"C:\Program Files\MariaDB 11.8\bin\mariadb.exe" -u root -p -h 127.0.0.1 -P 3306 chamados_ti
+
+INICIAR SISTEMA:
+flask --app app:app run -h 0.0.0.0 -p 5920

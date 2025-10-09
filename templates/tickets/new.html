@@ -1,0 +1,83 @@
+{% extends "layout.html" %}
+{% block title %}Novo Chamado — Sollus{% endblock %}
+
+{% block head %}
+<style>
+  .newticket-hero{
+    position:relative; overflow:hidden; border-radius:16px;
+    background: radial-gradient(120% 140% at 110% -20%, rgba(77,160,221,.35), transparent 60%),
+               linear-gradient(135deg, var(--blue-700), var(--blue-900));
+    color:#fff;
+  }
+  .newticket-hero .inner{ padding:24px; display:flex; align-items:center; gap:16px; }
+  .newticket-hero .icon{
+    width:44px;
+    height:44px;
+    background:rgba(255,255,255,0.3);
+    border-radius:50%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:22px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="newticket-hero mb-4">
+  <div class="inner">
+    <div class="icon"><i class="bi bi-card-checklist"></i></div>
+    <div>
+      <h1 class="h4">Abrir novo chamado de TI</h1>
+      <p class="mb-0">Descreva seu problema ou solicitação de TI para podermos atender.</p>
+    </div>
+  </div>
+</div>
+
+<form action="{{ url_for('tickets.create_ticket') }}" method="POST" enctype="multipart/form-data" class="needs-validation" novalidate>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <div class="row g-3">
+    <div class="col-12 col-lg-8">
+      <div class="nt-card p-3 p-md-4" style="border:1px solid var(--bs-gray-300); border-radius:8px;">
+        <div class="mb-3">
+          <label for="title" class="form-label">Título</label>
+          <input class="form-control" id="title" name="title" maxlength="140" required placeholder="Ex.: Sem acesso à rede na sala 3">
+        </div>
+        <div class="mb-3">
+          <label for="priority" class="form-label">Prioridade</label>
+          <select class="form-select" id="priority" name="priority" required>
+            <option value="medium" selected>Média</option>
+            <option value="low">Baixa</option>
+            <option value="high">Alta</option>
+            <option value="urgent">Urgente</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label for="description" class="form-label">Descrição</label>
+          <textarea class="form-control" id="description" name="description" rows="6" required placeholder="Conte o que aconteceu, quando começou, máquina/usuário/sistema, erros..."></textarea>
+        </div>
+        <div class="file-field dropzone text-center p-4 rounded bg-light">
+          <div><i class="bi bi-paperclip" style="font-size: 2rem;"></i></div>
+          <label class="btn btn-sm btn-secondary my-2" for="attachments">Selecionar arquivos</label>
+          <p class="text-muted small mb-0">Solte arquivos aqui ou clique para selecionar<br>Até 20MB no total</p>
+          <input type="file" id="attachments" name="files" multiple class="d-none" />
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-lg-4">
+      <div class="alert alert-info">
+        <div class="d-flex align-items-center mb-2"><i class="bi bi-info-circle me-2"></i> Dicas:</div>
+        <ul class="small mb-0 ps-3">
+          <li>Quanto mais detalhes você fornecer, mais rápido poderemos ajudar.</li>
+          <li>Prioridade "Urgente" deve ser usada só para casos críticos (ex.: sistema parado).</li>
+          <li>Você pode anexar arquivos (prints de tela, logs, etc.) se necessário.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="col-12">
+      <button class="btn btn-primary px-5" type="submit">Abrir Chamado</button>
+    </div>
+  </div>
+</form>
+{% endblock %}
